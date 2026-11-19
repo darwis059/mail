@@ -1,4 +1,4 @@
-name: Native platform artifacts
+name: Native platform artifacts (drw)
 
 on:
   workflow_dispatch:
