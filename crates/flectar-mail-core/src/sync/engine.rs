@@ -172,6 +172,17 @@ const RESTORE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5 * 
 
 #[derive(Debug)]
 pub(crate) enum PriorityFetchCmd {
+    EwsOriginal {
+        message_id: i64,
+        complete: oneshot::Sender<Result<Vec<u8>>>,
+    },
+    EwsAppend {
+        folder_id: i64,
+        raw: Vec<u8>,
+        seen: bool,
+        flagged: bool,
+        complete: oneshot::Sender<Result<()>>,
+    },
     Body(i64),
     Attachment {
         attachment_id: i64,
@@ -317,6 +328,39 @@ impl AccountHandle {
             .map_err(CoreError::Other)
     }
 
+    pub(crate) async fn ews_original(&self, message_id: i64) -> Result<Vec<u8>> {
+        let (complete, rx) = oneshot::channel();
+        self.body_tx
+            .send(PriorityFetchCmd::EwsOriginal {
+                message_id,
+                complete,
+            })
+            .await
+            .map_err(|_| CoreError::Offline)?;
+        rx.await.map_err(|_| CoreError::Offline)?
+    }
+
+    pub(crate) async fn ews_append(
+        &self,
+        folder_id: i64,
+        raw: Vec<u8>,
+        seen: bool,
+        flagged: bool,
+    ) -> Result<()> {
+        let (complete, rx) = oneshot::channel();
+        self.body_tx
+            .send(PriorityFetchCmd::EwsAppend {
+                folder_id,
+                raw,
+                seen,
+                flagged,
+                complete,
+            })
+            .await
+            .map_err(|_| CoreError::Offline)?;
+        rx.await.map_err(|_| CoreError::Offline)?
+    }
+
     pub async fn fetch_attachment(&self, attachment_id: i64) -> Result<Vec<u8>> {
         let (tx, rx) = oneshot::channel();
         tokio::time::timeout(
@@ -403,6 +447,11 @@ pub fn spawn_account(ctx: SyncCtx, config: AccountConfig) -> AccountHandle {
     let (joins, send_tx, restore_tx) = match config.mail_protocol {
         MailProtocol::Gmail => (
             crate::sync::gmail::spawn(ctx, config, rx, body_rx, settings_rx),
+            None,
+            None,
+        ),
+        MailProtocol::Ews => (
+            crate::ews::sync::spawn(ctx, config, rx, body_rx, settings_rx),
             None,
             None,
         ),
@@ -623,6 +672,7 @@ async fn run_body_fetcher(
             },
         };
         let first = match command {
+            PriorityFetchCmd::EwsOriginal { .. } | PriorityFetchCmd::EwsAppend { .. } => continue,
             PriorityFetchCmd::Attachment {
                 attachment_id,
                 complete,
@@ -1500,7 +1550,7 @@ pub async fn status_for_account(db: &Db, account_id: i64) -> Result<SyncStatus> 
             )?,
             // POP3 downloads whole messages in its foreground sync, and
             // imported mail has nothing to download.
-            MailProtocol::Pop3 | MailProtocol::Local => (0, 0),
+            MailProtocol::Ews | MailProtocol::Pop3 | MailProtocol::Local => (0, 0),
         };
         let header_failed: i64 = conn.query_row(
             "SELECT COUNT(*)

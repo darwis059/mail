@@ -4569,6 +4569,7 @@ async fn run_reader(ctx: SyncCtx, config: AccountConfig, mut rx: mpsc::Receiver<
     };
     while let Some(command) = rx.recv().await {
         match command {
+            PriorityFetchCmd::EwsOriginal { .. } | PriorityFetchCmd::EwsAppend { .. } => {}
             PriorityFetchCmd::Attachment {
                 attachment_id,
                 complete,
@@ -4639,7 +4640,9 @@ async fn run_reader(ctx: SyncCtx, config: AccountConfig, mut rx: mpsc::Receiver<
                             .map_err(|error| error.to_string());
                             let _ = complete.send(result);
                         }
-                        PriorityFetchCmd::Body(_) => {}
+                        PriorityFetchCmd::Body(_)
+                        | PriorityFetchCmd::EwsOriginal { .. }
+                        | PriorityFetchCmd::EwsAppend { .. } => {}
                     }
                 }
                 message_ids.sort_unstable();

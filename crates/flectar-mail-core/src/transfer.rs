@@ -316,6 +316,16 @@ impl crate::Core {
         message_id: i64,
         source: &Source,
     ) -> Result<Vec<u8>> {
+        if source.protocol == MailProtocol::Ews {
+            let handle = self
+                .handles
+                .read()
+                .await
+                .get(&source.account_id)
+                .cloned()
+                .ok_or(CoreError::Offline)?;
+            return handle.ews_original(message_id).await;
+        }
         let raw = match source.full_original() {
             Some(path) => {
                 self.read_original(
@@ -331,7 +341,7 @@ impl crate::Core {
                 MailProtocol::Imap => self.fetch_from_imap(run, source).await?,
                 MailProtocol::Jmap => self.fetch_from_jmap(run, source).await?,
                 MailProtocol::Gmail => self.fetch_from_gmail(run, source).await?,
-                MailProtocol::Pop3 | MailProtocol::Local => {
+                MailProtocol::Ews | MailProtocol::Pop3 | MailProtocol::Local => {
                     return Err(CoreError::NotFound("the message's original".into()));
                 }
             },
@@ -477,7 +487,7 @@ impl crate::Core {
                     transfer.received_at,
                 )
                 .await?),
-            MailProtocol::Imap | MailProtocol::Jmap | MailProtocol::Gmail => {
+            MailProtocol::Ews | MailProtocol::Imap | MailProtocol::Jmap | MailProtocol::Gmail => {
                 match self
                     .upload_to_folder(
                         &mut run.uploads,
@@ -517,7 +527,7 @@ impl crate::Core {
             return Ok(());
         };
         match source.protocol {
-            MailProtocol::Imap | MailProtocol::Jmap => {
+            MailProtocol::Ews | MailProtocol::Imap | MailProtocol::Jmap => {
                 let account_id = source.account_id;
                 let queued = self
                     .db

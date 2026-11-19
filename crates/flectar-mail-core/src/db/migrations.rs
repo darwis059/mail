@@ -68,6 +68,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration::Plain(include_str!("migrations/049_folder_since.sql")),
     Migration::Plain(include_str!("migrations/050_rule_tabs.sql")),
     Migration::Plain(include_str!("migrations/051_message_translations.sql")),
+    Migration::TableRebuild(include_str!("migrations/052_ews.sql")),
 ];
 pub const LATEST_VERSION: i64 = MIGRATIONS.len() as i64;
 
@@ -376,6 +377,8 @@ mod tests {
             "cross_store_operations",
             "draft_attachments",
             "drafts_meta",
+            "ews_folders",
+            "ews_items",
             "folders",
             "gmail_labels",
             "gmail_sync_state",

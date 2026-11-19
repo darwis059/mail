@@ -131,6 +131,7 @@ fn incoming(id: &str, subject: &str) -> (String, String) {
 
 fn pop3_args(pop3_port: u16, smtp_port: u16) -> AddPasswordAccountArgs {
     AddPasswordAccountArgs {
+        ews: Default::default(),
         email: "me@example.com".into(),
         display_name: Some("Me".into()),
         username: "me".into(),
@@ -221,6 +222,7 @@ async fn a_pop3_account_downloads_files_and_sends_mail_on_this_device() {
     // server.
     let switched = core
         .add_account_password(AddPasswordAccountArgs {
+            ews: Default::default(),
             mail_protocol: MailProtocol::Imap,
             ..pop3_args(pop3_port, smtp_port)
         })

@@ -164,9 +164,13 @@ pub fn list_info(conn: &Connection, account_id: Option<i64>) -> Result<Vec<Folde
                 Some(MailProtocol::Gmail | MailProtocol::Imap) => {
                     crate::imap::decode_mailbox_name(&f.path)
                 }
-                Some(MailProtocol::Jmap | MailProtocol::Pop3 | MailProtocol::Local) | None => {
-                    f.path.clone()
-                }
+                Some(
+                    MailProtocol::Ews
+                    | MailProtocol::Jmap
+                    | MailProtocol::Pop3
+                    | MailProtocol::Local,
+                )
+                | None => f.path.clone(),
             },
             is_jmap: f.jmap_id.is_some(),
             path: f.path,

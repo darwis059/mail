@@ -10,7 +10,7 @@ import { ProviderButton } from "../components/provider-button.slint";
 import { OAuthSetupDialog } from "../dialogs/oauth-setup-dialog.slint";
 import { AppTheme } from "../design-system.slint";
 import { TypeScale } from "../typography.slint";
-
+import { EwsSetup, EwsFields } from "../ews.slint";
 export component OnboardingView inherits Rectangle {
     in property <bool> google-available: false;
     in property <bool> microsoft-available: false;
@@ -64,7 +64,7 @@ export component OnboardingView inherits Rectangle {
 
     private property <bool> account-form-valid: root.account-email != ""
         && root.account-password != ""
-        && (root.account-protocol == "jmap" || (
+        && ((root.account-protocol == "ews" && EwsSetup.url != "") || root.account-protocol == "jmap" || (root.account-protocol != "ews" &&
             root.incoming-host != ""
             && root.incoming-port != ""
             && root.smtp-host != ""
@@ -74,7 +74,7 @@ export component OnboardingView inherits Rectangle {
         root.account-email = "";
         root.account-username = "";
         root.account-password = "";
-        root.account-protocol = "imap";
+        root.account-protocol = "imap"; EwsSetup.reset();
         root.jmap-url = "";
         root.incoming-security = "tls";
         root.smtp-security = "tls";
@@ -253,7 +253,8 @@ export component OnboardingView inherits Rectangle {
                     wrap: word-wrap;
                 }
                 Text {
-                    text: root.account-protocol == "jmap" ? @tr("Connect using JMAP for mail sync and sending.")
+                    text: root.account-protocol == "ews" ? @tr("Use the full EWS URL provided by your Exchange administrator.")
+                        : root.account-protocol == "jmap" ? @tr("Connect using JMAP for mail sync and sending.")
                         : root.account-protocol == "pop3" ? @tr("Connect using POP3 and SMTP. Mail is downloaded to this device and kept here.")
                         : @tr("Connect using IMAP and SMTP.");
                     wrap: word-wrap; height: self.preferred-height;
@@ -317,6 +318,8 @@ export component OnboardingView inherits Rectangle {
                         clicked => { root.choose-protocol("jmap"); }
                     }
                 }
+                Button { text: @tr("Microsoft Exchange (EWS)"); primary: root.account-protocol == "ews"; clicked => { root.choose-protocol("ews"); } }
+                if root.account-protocol == "ews" : EwsFields { enabled: !root.account-setup-in-progress; label-color: root.body-text; }
                 if root.account-protocol == "jmap" : LineEdit {
                     height: 42px;
                     text <=> root.jmap-url;
@@ -328,7 +331,7 @@ export component OnboardingView inherits Rectangle {
                     font-size: TypeScale.caption;
                     wrap: word-wrap; height: self.preferred-height;
                 }
-                if root.account-protocol != "jmap" : HorizontalBox {
+                if root.account-protocol != "jmap" && root.account-protocol != "ews" : HorizontalBox {
                     height: 60px;
                     padding: 0px;
                     spacing: 8px;
@@ -350,7 +353,7 @@ export component OnboardingView inherits Rectangle {
                         placeholder: MailPorts.incoming(root.account-protocol, root.incoming-security);
                     }
                 }
-                if root.account-protocol != "jmap" : HorizontalBox {
+                if root.account-protocol != "jmap" && root.account-protocol != "ews" : HorizontalBox {
                     height: 60px;
                     padding: 0px;
                     spacing: 8px;
@@ -376,7 +379,7 @@ export component OnboardingView inherits Rectangle {
                     text: @tr("Proton Bridge: use the local servers, ports and password shown in Bridge, and match its encryption settings.");
                     color: root.muted-text; font-size: TypeScale.caption; wrap: word-wrap; height: self.preferred-height;
                 }
-                if root.account-protocol != "jmap" : MailSecurityFields {
+                if root.account-protocol != "jmap" && root.account-protocol != "ews" : MailSecurityFields {
                     incoming-protocol: root.account-protocol;
                     incoming-security <=> root.incoming-security;
                     smtp-security <=> root.smtp-security;

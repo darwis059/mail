@@ -74,6 +74,11 @@ pub(crate) async fn is_local_only_draft(ctx: &SyncCtx, message_id: i64) -> Resul
             match protocol {
                 MailProtocol::Gmail => Ok(gm_msgid.is_none() && gmail_draft_id.is_none()),
                 MailProtocol::Jmap => Ok(jmap_id.is_none()),
+                MailProtocol::Ews => Ok(!conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM ews_items WHERE message_id=?1)",
+                    [message_id],
+                    |r| r.get::<_, bool>(0),
+                )?),
                 MailProtocol::Imap => {
                     if uid.is_some() {
                         return Ok(false);

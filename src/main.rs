@@ -6459,7 +6459,7 @@ pub fn run(platform: PlatformContext) -> Result<(), Box<dyn std::error::Error>> 
             match MailProtocol::parse(app.get_account_protocol().as_str()) {
                 Some(MailProtocol::Imap) => (MailProtocol::Imap, "993"),
                 Some(MailProtocol::Pop3) => (MailProtocol::Pop3, "995"),
-                Some(MailProtocol::Gmail | MailProtocol::Jmap | MailProtocol::Local) | None => {
+                Some(MailProtocol::Ews | MailProtocol::Gmail | MailProtocol::Jmap | MailProtocol::Local) | None => {
                     return;
                 }
             };
@@ -6554,6 +6554,7 @@ pub fn run(platform: PlatformContext) -> Result<(), Box<dyn std::error::Error>> 
             };
             let port = |value: &str| value.trim().parse::<u16>().ok().filter(|port| *port > 0);
             let (incoming_port, smtp_port, progress) = match mail_protocol {
+                MailProtocol::Ews => (0, 0, UiMessage::plain("Checking Exchange credentials…")),
                 // JMAP discovers its endpoints; the server ports are unused.
                 MailProtocol::Jmap => (
                     993,
@@ -6600,6 +6601,12 @@ pub fn run(platform: PlatformContext) -> Result<(), Box<dyn std::error::Error>> 
             };
             app.set_sync_status(progress);
             let args = AddPasswordAccountArgs {
+                ews: flectar_mail_core::ews::EwsSettings {
+                    url: app.global::<EwsSetup>().get_url().to_string(),
+                    default_domain: Some(app.global::<EwsSetup>().get_domain().to_string()).filter(|s| !s.is_empty()),
+                    auth: match app.global::<EwsSetup>().get_auth() { 1 => flectar_mail_core::ews::AuthMode::Ntlm, 2 => flectar_mail_core::ews::AuthMode::Basic, _ => flectar_mail_core::ews::AuthMode::Auto },
+                    poll_seconds: app.global::<EwsSetup>().get_poll().parse().unwrap_or(0),
+                },
                 email: email.to_string(),
                 display_name: None,
                 username: username.to_string(),

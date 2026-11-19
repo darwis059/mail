@@ -268,6 +268,10 @@ pub(super) fn apply_connected_accounts(
                 has_account_color: presentation.has_account_color(account.id),
                 username: config.username.clone().into(),
                 jmap_url: config.jmap_url.clone().into(),
+                ews_url: config.settings.ews.url.clone().into(),
+                ews_domain: config.settings.ews.default_domain.clone().unwrap_or_default().into(),
+                ews_auth: match config.settings.ews.auth { flectar_mail_core::ews::AuthMode::Auto => 0, flectar_mail_core::ews::AuthMode::Ntlm => 1, flectar_mail_core::ews::AuthMode::Basic => 2 },
+                ews_poll: config.settings.ews.poll_seconds.to_string().into(),
                 incoming_security: config.settings.connection.incoming_security.as_str().into(),
                 smtp_security: config.settings.connection.smtp_security.as_str().into(),
                 trusted_certificate_pem: config

@@ -393,10 +393,14 @@ fn show_review(app: &AppWindow, session: &ImportSession) {
 /// one already signed in.
 fn mail_destinations(session: &ImportSession, accounts: &[Account]) -> Vec<Option<MailAccount>> {
     let mut destinations: Vec<Option<MailAccount>> = vec![None];
-    let here = accounts.iter().map(|account| MailAccount {
-        email: account.email.clone(),
-        protocol: account.mail_protocol,
-    });
+    // Store imports create folders; Exchange uploads target existing folders.
+    let here = accounts
+        .iter()
+        .filter(|account| account.mail_protocol != MailProtocol::Ews)
+        .map(|account| MailAccount {
+            email: account.email.clone(),
+            protocol: account.mail_protocol,
+        });
     let chosen = session
         .plans
         .iter()
@@ -459,6 +463,7 @@ fn destination_name(destinations: &[Option<MailAccount>], index: usize, device: 
     let protocol = match account.protocol {
         MailProtocol::Imap => "IMAP",
         MailProtocol::Jmap => "JMAP",
+        MailProtocol::Ews => "EWS",
         MailProtocol::Gmail => "Gmail",
         MailProtocol::Pop3 => "POP3",
         MailProtocol::Local => "",

@@ -42,7 +42,7 @@ import { Numbers } from "../numbers.slint";
 import { BlockSender } from "../block-sender.slint";
 import { MailRules } from "../rules.slint";
 import { RuleEditor } from "../components/rule-editor.slint";
-
+import { EwsSetup, EwsFields } from "../ews.slint";
 // Use the same focusable controls in both account-card layouts.
 component AccountActions inherits HorizontalLayout {
     in property <string> edit-label;
@@ -1035,7 +1035,7 @@ export component SettingsDialog inherits Rectangle {
 
     private property <bool> account_form_valid: root.account_email != ""
         && root.account_password != ""
-        && (root.account_protocol == "jmap" || (
+        && ((root.account_protocol == "ews" && EwsSetup.url != "") || root.account_protocol == "jmap" || (root.account_protocol != "ews" &&
             root.incoming_host != ""
             && root.incoming_port != ""
             && root.smtp_host != ""
@@ -1047,6 +1047,7 @@ export component SettingsDialog inherits Rectangle {
             root.account_username = account.username;
             root.account_protocol = account.mail_protocol;
             root.jmap_url = account.jmap_url;
+            EwsSetup.url = account.ews_url; EwsSetup.domain = account.ews_domain; EwsSetup.auth = account.ews_auth; EwsSetup.poll = account.ews_poll;
             root.incoming_security = account.incoming_security;
             root.smtp_security = account.smtp_security;
             root.trusted_certificate_pem = account.trusted_certificate_pem;
@@ -1091,7 +1092,7 @@ export component SettingsDialog inherits Rectangle {
         root.account_email = "";
         root.account_username = "";
         root.account_password = "";
-        root.account_protocol = "imap";
+        root.account_protocol = "imap"; EwsSetup.reset();
         root.jmap_url = "";
         root.incoming_security = "tls";
         root.smtp_security = "tls";
@@ -2822,7 +2823,7 @@ export component SettingsDialog inherits Rectangle {
                                             spacing: 2px;
                                             account-name := Text { height: max(19px, self.preferred-height); text: account.name; color: root.heading; font-size: TypeScale.body-large; font-weight: 700; overflow: elide; }
                                             account-email := Text { height: max(16px, self.preferred-height); text: account.email; color: root.secondary-text; font-size: TypeScale.caption; overflow: elide; }
-                                            account-state := Text { height: max(16px, self.preferred-height); text: account.status == "offline" ? @tr("Couldn't check mail · Retrying automatically") : account.status == "needs_reauth" ? @tr("Sign-in required") : account.status == "syncing" ? @tr("Checking for new mail…") : account.status == "idle" ? (account.mail_protocol == "gmail" ? @tr("Connected · Gmail") : account.mail_protocol == "jmap" ? @tr("Connected · JMAP") : account.mail_protocol == "pop3" ? (drop-target.unencrypted ? @tr("Connected without encryption · POP3 + SMTP") : @tr("Connected · POP3 + SMTP")) : drop-target.unencrypted ? @tr("Connected without encryption · IMAP + SMTP") : @tr("Connected · IMAP + SMTP")) : @tr("Account status: {}", account.status); color: account.status == "needs_reauth" ? #c0392b : account.status == "idle" && drop-target.unencrypted ? AppTheme.destructive : root.faint-text; font-size: TypeScale.caption; overflow: elide; }
+                                            account-state := Text { height: max(16px, self.preferred-height); text: account.status == "offline" ? @tr("Couldn't check mail · Retrying automatically") : account.status == "needs_reauth" ? @tr("Sign-in required") : account.status == "syncing" ? @tr("Checking for new mail…") : account.status == "idle" ? (account.mail_protocol == "gmail" ? @tr("Connected · Gmail") : account.mail_protocol == "ews" ? @tr("Connected · Exchange EWS") : account.mail_protocol == "jmap" ? @tr("Connected · JMAP") : account.mail_protocol == "pop3" ? (drop-target.unencrypted ? @tr("Connected without encryption · POP3 + SMTP") : @tr("Connected · POP3 + SMTP")) : drop-target.unencrypted ? @tr("Connected without encryption · IMAP + SMTP") : @tr("Connected · IMAP + SMTP")) : @tr("Account status: {}", account.status); color: account.status == "needs_reauth" ? #c0392b : account.status == "idle" && drop-target.unencrypted ? AppTheme.destructive : root.faint-text; font-size: TypeScale.caption; overflow: elide; }
                                             if account.checked_at != "" : Text { height: max(16px, self.preferred-height); text: AccountStatusText.last-checked(account.checked_day, account.checked_at); color: root.faint-text; font-size: TypeScale.caption; overflow: elide; }
                                         }
                                         AccountActions {
@@ -3989,7 +3990,7 @@ export component SettingsDialog inherits Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 width: min(640px, parent.width - 24px);
-                height: min(root.compact ? 520px : root.account_protocol == "jmap" ? 480px : 520px, parent.height - 24px);
+                height: min(root.account_protocol == "ews" ? 620px : root.compact ? 520px : root.account_protocol == "jmap" ? 480px : 520px, parent.height - 24px);
                 background: root.surface;
                 border-radius: 12px;
                 border-width: 1px;
@@ -4030,7 +4031,7 @@ export component SettingsDialog inherits Rectangle {
                                 padding: 0px;
                                 spacing: 2px;
                                 Text { text: root.account_editing ? @tr("Edit {}", root.account_email) : @tr("Connect a mail account"); color: root.title-color; font-size: TypeScale.heading; font-weight: 700; overflow: elide; }
-                                Text { text: root.account_protocol == "jmap" ? @tr("Uses JMAP for mail sync and sending, with automatic discovery.") : root.account_protocol == "pop3" ? @tr("Downloads mail from a POP3 server to this device and sends through SMTP.") : @tr("Uses separate IMAP and SMTP servers for mail sync and sending."); color: root.faint-text; font-size: TypeScale.caption; overflow: elide; }
+                                Text { text: root.account_protocol == "ews" ? @tr("Use the full EWS URL provided by your Exchange administrator.") : root.account_protocol == "jmap" ? @tr("Uses JMAP for mail sync and sending, with automatic discovery.") : root.account_protocol == "pop3" ? @tr("Downloads mail from a POP3 server to this device and sends through SMTP.") : @tr("Uses separate IMAP and SMTP servers for mail sync and sending."); color: root.faint-text; font-size: TypeScale.caption; overflow: elide; }
                             }
                             Rectangle { horizontal-stretch: 1; }
                             IconButton { width: 40px; height: 40px; icon: @image-url("../icons/lucide/outline/x.svg"); icon-color: root.secondary-text; idle-background: transparent; hover-background: root.accent-soft; tooltip-text: @tr("Close"); clicked => { root.account_form_open = false; } }
@@ -4063,7 +4064,7 @@ export component SettingsDialog inherits Rectangle {
                                 FormField { enabled: !root.account_setup_in_progress; height: 57px; label: root.account_protocol == "jmap" ? @tr("Password, app password, or API token") : @tr("Password or app password"); value <=> root.account_password; placeholder: @tr("Stored securely in your system keyring"); input-type: password; label-color: root.secondary-text; }
                                 // POP3 mail exists only on this device, so an account
                                 // never switches to or from POP3.
-                                if !(root.account_editing && root.account_protocol == "pop3") : HorizontalBox {
+                                if !(root.account_editing && (root.account_protocol == "pop3" || root.account_protocol == "ews")) : HorizontalBox {
                                     padding: 0px;
                                     height: 40px;
                                     spacing: 8px;
@@ -4071,6 +4072,13 @@ export component SettingsDialog inherits Rectangle {
                                     if !root.account_editing : Button { horizontal-stretch: 1; height: 40px; text: @tr("POP3"); enabled: !root.account_setup_in_progress; primary: root.account_protocol == "pop3"; clicked => { root.choose-protocol("pop3"); } }
                                     Button { horizontal-stretch: 1; height: 40px; text: @tr("JMAP"); enabled: !root.account_setup_in_progress; primary: root.account_protocol == "jmap"; clicked => { root.choose-protocol("jmap"); } }
                                 }
+                                if !root.account_editing || root.account_protocol == "ews" : Button {
+                                    text: @tr("Microsoft Exchange (EWS)");
+                                    enabled: !root.account_setup_in_progress;
+                                    primary: root.account_protocol == "ews";
+                                    clicked => { root.choose-protocol("ews"); }
+                                }
+                                if root.account_protocol == "ews" : EwsFields { enabled: !root.account_setup_in_progress; label-color: root.secondary-text; }
                                 if root.account_protocol == "jmap" : FormField { enabled: !root.account_setup_in_progress;
                                     height: 57px;
                                     label: @tr("Server address · Optional");
@@ -4078,14 +4086,14 @@ export component SettingsDialog inherits Rectangle {
                                     placeholder: @tr("Discovered from your email domain");
                                     label-color: root.secondary-text;
                                 }
-                                if root.account_protocol != "jmap" : HorizontalBox {
+                                if root.account_protocol != "jmap" && root.account_protocol != "ews" : HorizontalBox {
                                     padding: 0px;
                                     height: 57px;
                                     spacing: 10px;
                                     FormField { enabled: !root.account_setup_in_progress; horizontal-stretch: 1; label: root.account_protocol == "pop3" ? @tr("POP3 server") : @tr("IMAP server"); value <=> root.incoming_host; placeholder: root.account_protocol == "pop3" ? @tr("pop.example.com") : @tr("imap.example.com"); label-color: root.secondary-text; }
                                     FormField { enabled: !root.account_setup_in_progress; width: 88px; label: @tr("Port"); value <=> root.incoming_port; placeholder: MailPorts.incoming(root.account_protocol, root.incoming_security); label-color: root.secondary-text; }
                                 }
-                                if root.account_protocol != "jmap" : HorizontalBox {
+                                if root.account_protocol != "jmap" && root.account_protocol != "ews" : HorizontalBox {
                                     padding: 0px;
                                     height: 57px;
                                     spacing: 10px;
@@ -4096,7 +4104,7 @@ export component SettingsDialog inherits Rectangle {
                                     text: @tr("Proton Bridge: use the local servers, ports and password shown in Bridge, and match its encryption settings.");
                                     color: root.secondary-text; font-size: TypeScale.caption; wrap: word-wrap; height: self.preferred-height;
                                 }
-                                if root.account_protocol != "jmap" : MailSecurityFields {
+                                if root.account_protocol != "jmap" && root.account_protocol != "ews" : MailSecurityFields {
                                     incoming-protocol: root.account_protocol;
                                     incoming-security <=> root.incoming_security;
                                     smtp-security <=> root.smtp_security;

@@ -73,6 +73,7 @@ async fn first_sync_drains_bodies_fast_and_updates_live() {
 
     let started = Instant::now();
     core.add_account_password(AddPasswordAccountArgs {
+        ews: Default::default(),
         connection: flectar_mail_core::models::MailConnectionSettings::new(
             flectar_mail_core::models::ConnectionSecurity::Tls,
             flectar_mail_core::models::ConnectionSecurity::Starttls,

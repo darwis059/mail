@@ -63,6 +63,11 @@ hf-hub = { version = "1", default-features = false, features = ["rustls-tls"], o
 
 # auth
 base64 = "0.23"
+md4 = "0.11"
+md-5 = "0.11"
+hmac = "0.13"
+getrandom = "0.4"
+roxmltree = "0.21"
 sha2 = "0.10"
 url = "2"
 percent-encoding = "2"

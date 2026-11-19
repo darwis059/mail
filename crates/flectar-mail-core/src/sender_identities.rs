@@ -92,7 +92,9 @@ impl Core {
                 jmap_sender_identities(&account, &connected).await?
             }
             // SMTP servers publish no identity list.
-            MailProtocol::Imap | MailProtocol::Pop3 => vec![primary_identity(&account)],
+            MailProtocol::Ews | MailProtocol::Imap | MailProtocol::Pop3 => {
+                vec![primary_identity(&account)]
+            }
             // It has no address to send from.
             MailProtocol::Local => Vec::new(),
         };
@@ -391,7 +393,7 @@ pub(crate) fn manual_identity_policy_for(protocol: MailProtocol) -> ManualIdenti
     match protocol {
         MailProtocol::Gmail | MailProtocol::Local => ManualIdentityPolicy::Never,
         MailProtocol::Jmap => ManualIdentityPolicy::WithinWildcard,
-        MailProtocol::Imap | MailProtocol::Pop3 => ManualIdentityPolicy::Any,
+        MailProtocol::Ews | MailProtocol::Imap | MailProtocol::Pop3 => ManualIdentityPolicy::Any,
     }
 }
 

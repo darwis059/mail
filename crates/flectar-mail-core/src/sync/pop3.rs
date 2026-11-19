@@ -148,7 +148,7 @@ pub(crate) async fn run(ctx: SyncCtx, mut config: AccountConfig, mut inputs: Inp
             },
             read = inputs.reads.recv() => match read {
                 None => return,
-                Some(PriorityFetchCmd::Body(_)) => {}
+                Some(PriorityFetchCmd::Body(_) | PriorityFetchCmd::EwsOriginal{..} | PriorityFetchCmd::EwsAppend{..}) => {}
                 Some(PriorityFetchCmd::Attachment { complete, .. }) => {
                     let _ = complete.send(Err(
                         "attachments of POP3 mail are read from the stored message".into(),

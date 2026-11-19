@@ -16,6 +16,7 @@ pub mod db;
 pub mod embed;
 pub mod error;
 pub mod events;
+pub mod ews;
 mod file_io;
 pub mod files;
 pub mod googlecal;
@@ -319,7 +320,7 @@ pub(crate) fn validate_portable_account(config: &PortableAccountConfig) -> Resul
             account_kind,
             (Provider::Generic, AuthKind::Password) | (Provider::Microsoft, AuthKind::Oauth2)
         ),
-        MailProtocol::Jmap | MailProtocol::Pop3 => {
+        MailProtocol::Ews | MailProtocol::Jmap | MailProtocol::Pop3 => {
             account_kind == (Provider::Generic, AuthKind::Password)
         }
         // Mail kept on this device has no server to sign in to again.
@@ -356,6 +357,10 @@ pub(crate) fn validate_portable_account(config: &PortableAccountConfig) -> Resul
                 && config.incoming_port != 0
                 && config.smtp_port != 0
         }
+        MailProtocol::Ews => {
+            config.settings.ews.validate()?;
+            !config.username.trim().is_empty()
+        }
         MailProtocol::Jmap => !config.username.trim().is_empty(),
         MailProtocol::Local => false,
     };
@@ -373,7 +378,7 @@ pub(crate) fn validate_portable_account(config: &PortableAccountConfig) -> Resul
 /// report their own, and POP3 and local folders exist only on this device.
 fn folder_path_delimiter(protocol: MailProtocol, folder: &repo::folders::Folder) -> String {
     match protocol {
-        MailProtocol::Jmap => " / ".to_owned(),
+        MailProtocol::Ews | MailProtocol::Jmap => " / ".to_owned(),
         MailProtocol::Gmail | MailProtocol::Imap => {
             folder.delimiter.clone().unwrap_or_else(|| "/".into())
         }
@@ -546,6 +551,7 @@ mod username_fallback_tests {
 
     fn args(username: &str) -> AddPasswordAccountArgs {
         AddPasswordAccountArgs {
+            ews: Default::default(),
             email: "jane@example.com".into(),
             display_name: None,
             username: username.into(),
@@ -698,6 +704,7 @@ mod apple_sign_in_guidance_tests {
 
     fn args(email: &str, host: &str) -> AddPasswordAccountArgs {
         AddPasswordAccountArgs {
+            ews: Default::default(),
             email: email.into(),
             display_name: None,
             username: email.into(),
@@ -1749,7 +1756,7 @@ impl Core {
                     }
                     // The next sync weighs skipped server messages against
                     // the new boundary.
-                    MailProtocol::Pop3 => {}
+                    MailProtocol::Ews | MailProtocol::Pop3 => {}
                     MailProtocol::Local => {
                         return Err(CoreError::Other(
                             "mail kept on this device has no server history".into(),
@@ -1783,6 +1790,11 @@ impl Core {
                 let mut config = repo::accounts::get_config(&tx, account_id)?
                     .ok_or_else(|| CoreError::NotFound(format!("account {account_id}")))?;
                 match config.mail_protocol {
+                    MailProtocol::Ews => {
+                        return Err(CoreError::Other(
+                            "Exchange files sent messages automatically".into(),
+                        ));
+                    }
                     MailProtocol::Gmail | MailProtocol::Imap | MailProtocol::Jmap => {}
                     MailProtocol::Pop3 => {
                         return Err(CoreError::Other(
@@ -1823,7 +1835,8 @@ impl Core {
                     .ok_or_else(|| CoreError::NotFound(format!("account {account_id}")))?;
                 match config.mail_protocol {
                     MailProtocol::Imap => {}
-                    MailProtocol::Gmail
+                    MailProtocol::Ews
+                    | MailProtocol::Gmail
                     | MailProtocol::Jmap
                     | MailProtocol::Pop3
                     | MailProtocol::Local => {
@@ -1921,7 +1934,8 @@ impl Core {
                     .ok_or_else(|| CoreError::NotFound(format!("account {account_id}")))?;
                 match config.mail_protocol {
                     MailProtocol::Pop3 => {}
-                    MailProtocol::Gmail
+                    MailProtocol::Ews
+                    | MailProtocol::Gmail
                     | MailProtocol::Imap
                     | MailProtocol::Jmap
                     | MailProtocol::Local => {
@@ -1945,8 +1959,13 @@ impl Core {
 
     pub async fn test_connection(&self, args: &AddPasswordAccountArgs) -> ConnectionTestResult {
         let mut args = args.clone();
-        args.password = normalize_account_password(args.password);
+        if args.mail_protocol != MailProtocol::Ews {
+            args.password = normalize_account_password(args.password);
+        }
         let result = match args.mail_protocol {
+            MailProtocol::Ews => ews::probe(&args.ews, &args.username, &args.password)
+                .await
+                .map_err(|e| e.to_client_json()),
             MailProtocol::Jmap => crate::jmap::client::connect_with(
                 &args.email,
                 &args.username,
@@ -2022,13 +2041,18 @@ impl Core {
         let email = normalize_account_email(&args.email)
             .ok_or_else(|| CoreError::Auth("enter a valid email address".into()))?;
         let mut args = AddPasswordAccountArgs {
+            ews: args.ews,
             email,
             display_name: args
                 .display_name
                 .map(|value| value.trim().to_owned())
                 .filter(|value| !value.is_empty()),
             username: args.username.trim().to_owned(),
-            password: normalize_account_password(args.password),
+            password: if args.mail_protocol == MailProtocol::Ews {
+                args.password
+            } else {
+                normalize_account_password(args.password)
+            },
             mail_protocol: args.mail_protocol,
             jmap_url: args.jmap_url.trim().to_owned(),
             incoming_host: args.incoming_host.trim().to_owned(),
@@ -2051,6 +2075,7 @@ impl Core {
             return Err(CoreError::Auth("an account field is too long".into()));
         }
         match args.mail_protocol {
+            MailProtocol::Ews => args.ews.validate()?,
             MailProtocol::Imap | MailProtocol::Pop3 => {
                 if args.incoming_host.is_empty()
                     || args.smtp_host.is_empty()
@@ -2102,11 +2127,37 @@ impl Core {
             ));
         }
 
+        if let Some(existing) = &existing
+            && (existing.mail_protocol == MailProtocol::Ews
+                || args.mail_protocol == MailProtocol::Ews)
+        {
+            let account_id = existing.id;
+            let current = self
+                .db
+                .read(move |conn| repo::accounts::get_config(conn, account_id))
+                .await?
+                .ok_or_else(|| CoreError::NotFound(format!("account {account_id}")))?;
+            if current.mail_protocol != args.mail_protocol
+                || current.settings.ews.url.trim() != args.ews.url.trim()
+                || current.settings.ews.default_domain != args.ews.default_domain
+                || current.username != args.username
+            {
+                return Err(CoreError::Auth(
+                    "Remove the existing account before changing its Exchange mailbox identity"
+                        .into(),
+                ));
+            }
+        }
+
         // Verify credentials before storing anything. For JMAP, also pin the
         // exact Mail account selected from the authenticated Session so a
         // later reconnect can never drift to a different shared account.
         let mut pop3_probe = None;
         let jmap_account_id = match args.mail_protocol {
+            MailProtocol::Ews => {
+                ews::probe(&args.ews, &args.username, &args.password).await?;
+                None
+            }
             MailProtocol::Jmap => Some(
                 crate::jmap::client::connect_with(
                     &args.email,
@@ -2177,6 +2228,7 @@ impl Core {
                         .ok_or_else(|| CoreError::NotFound("account".into()))?
                         .settings;
                     settings.connection = a.connection.clone();
+                    *settings.ews = a.ews.clone();
                     repo::accounts::set_settings(&transaction, id, &settings)?;
                     if let Some(probe) = pop3_probe {
                         record_pop3_probe(&transaction, id, probe)?;
@@ -2220,7 +2272,11 @@ impl Core {
                             smtp_host: &a.smtp_host,
                             smtp_port: a.smtp_port,
                         },
-                        &AccountSettings::new(a.connection.clone()),
+                        &{
+                            let mut settings = AccountSettings::new(a.connection.clone());
+                            *settings.ews = a.ews.clone();
+                            settings
+                        },
                         repo::accounts::CREDENTIAL_SETUP_STATE,
                     )?;
                     if let Some(probe) = pop3_probe {
@@ -3179,7 +3235,7 @@ impl Core {
     ) -> Result<MailExport> {
         match self.account_protocol(account_id).await? {
             MailProtocol::Pop3 | MailProtocol::Local => {}
-            MailProtocol::Gmail | MailProtocol::Imap | MailProtocol::Jmap => {
+            MailProtocol::Ews | MailProtocol::Gmail | MailProtocol::Imap | MailProtocol::Jmap => {
                 return Err(CoreError::Other(
                     "only POP3 accounts and mail kept on this device are here alone".into(),
                 ));
@@ -4688,6 +4744,11 @@ impl Core {
             None => None,
         };
         let folder_id = match protocol {
+            MailProtocol::Ews => {
+                return Err(CoreError::Other(
+                    "Exchange folder editing is unavailable".into(),
+                ));
+            }
             MailProtocol::Gmail => {
                 let config = self.folder_account_config(account_id).await?;
                 if name.contains('/') {
@@ -4910,6 +4971,11 @@ impl Core {
         let old_name = folder.path.clone();
         let parent_prefix = old_name.rsplit_once(&delimiter).map(|(parent, _)| parent);
         match protocol {
+            MailProtocol::Ews => {
+                return Err(CoreError::Other(
+                    "Exchange folder editing is unavailable".into(),
+                ));
+            }
             MailProtocol::Gmail => {
                 let config = self.folder_account_config(account_id).await?;
                 let full_name = parent_prefix
@@ -5020,6 +5086,11 @@ impl Core {
             .await?;
         tree.sort_by_key(|candidate| std::cmp::Reverse(candidate.path.len()));
         match protocol {
+            MailProtocol::Ews => {
+                return Err(CoreError::Other(
+                    "Exchange folder editing is unavailable".into(),
+                ));
+            }
             MailProtocol::Gmail => {
                 let config = self.folder_account_config(account_id).await?;
                 for candidate in &tree {
@@ -5946,7 +6017,7 @@ impl Core {
                 // Protected drafts stay local until explicit Send. Even incomplete
                 // recipient lists must never cause a plaintext server upload.
                 let uploads_drafts = match mail_protocol {
-                    MailProtocol::Gmail | MailProtocol::Jmap => true,
+                    MailProtocol::Ews | MailProtocol::Gmail | MailProtocol::Jmap => true,
                     MailProtocol::Imap | MailProtocol::Pop3 | MailProtocol::Local => false,
                 };
                 let sync_remote_account = if !security.enabled() && uploads_drafts {
@@ -6179,6 +6250,34 @@ impl Core {
                 let mut nudge_account = None;
                 let mut staged_paths = Vec::new();
                 match row.8 {
+                    MailProtocol::Ews => {
+                        conn.execute(
+                            "UPDATE pending_actions SET state='cancelled',finished_at=?2
+                           WHERE message_id=?1 AND kind='save_draft' AND state='pending'",
+                            rusqlite::params![draft_id, now_ms()],
+                        )?;
+                        let remote: Option<String> = conn
+                            .query_row(
+                                "SELECT remote_id FROM ews_items WHERE message_id=?1",
+                                [draft_id],
+                                |r| r.get(0),
+                            )
+                            .optional()?;
+                        if let Some(remote) = remote {
+                            repo::actions::enqueue(
+                                conn,
+                                row.0,
+                                "delete_draft",
+                                None,
+                                row.1,
+                                &serde_json::json!({"ewsItemId":remote}),
+                                None,
+                            )?;
+                            nudge_account = Some(row.0);
+                        }
+                        staged_paths = repo::messages::take_draft_attachment_paths(conn, draft_id)?;
+                        repo::messages::delete(conn, draft_id)?;
+                    }
                     MailProtocol::Jmap => {
                         conn.execute(
                             "UPDATE pending_actions SET state='cancelled',finished_at=?2
@@ -6376,10 +6475,27 @@ impl Core {
         };
         let protocol = self.account_protocol(account_id).await?;
         let missing = !tokio::fs::try_exists(path).await.unwrap_or(true);
+        if missing && protocol == MailProtocol::Ews {
+            let handle = self
+                .handles
+                .read()
+                .await
+                .get(&account_id)
+                .cloned()
+                .ok_or(CoreError::Offline)?;
+            let raw = handle.ews_original(message_id).await?;
+            if raw.len() > max_bytes {
+                return Err(CoreError::Other(format!(
+                    "{context} exceeds the size limit"
+                )));
+            }
+            return Ok(raw);
+        }
         match protocol {
             MailProtocol::Pop3 if missing => {}
             // Imported mail has no other copy here to restore from.
             MailProtocol::Pop3
+            | MailProtocol::Ews
             | MailProtocol::Gmail
             | MailProtocol::Imap
             | MailProtocol::Jmap
@@ -11496,7 +11612,7 @@ pub(crate) fn apply_thread_action_in(
             }
             // Elsewhere a copy would be a second message of the same
             // Message-ID, which an account here shows once.
-            if mail_protocol != MailProtocol::Jmap {
+            if !matches!(mail_protocol, MailProtocol::Jmap | MailProtocol::Ews) {
                 return Err(CoreError::Other(
                     "this account keeps each message in one folder".into(),
                 ));
@@ -11505,11 +11621,12 @@ pub(crate) fn apply_thread_action_in(
                 if *f == Some(target) {
                     continue;
                 }
-                let added = tx.execute(
-                    "INSERT OR IGNORE INTO message_folders (message_id, folder_id)
+                let added = mail_protocol == MailProtocol::Ews
+                    || tx.execute(
+                        "INSERT OR IGNORE INTO message_folders (message_id, folder_id)
                      VALUES (?1, ?2)",
-                    rusqlite::params![id, target],
-                )? > 0;
+                        rusqlite::params![id, target],
+                    )? > 0;
                 if added {
                     let aid = repo::actions::enqueue(
                         tx,

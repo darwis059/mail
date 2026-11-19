@@ -27,7 +27,7 @@ pub(crate) async fn run(
             },
             read = reads.recv() => match read {
                 None => return,
-                Some(PriorityFetchCmd::Body(_)) => {}
+                Some(PriorityFetchCmd::Body(_) | PriorityFetchCmd::EwsOriginal{..} | PriorityFetchCmd::EwsAppend{..}) => {}
                 Some(PriorityFetchCmd::Attachment { complete, .. }) => {
                     let _ = complete.send(Err(
                         "attachments of local mail are read from the stored message".into(),

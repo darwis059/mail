@@ -79,6 +79,7 @@ where
 
 async fn add(core: &Core, user: &str) -> i64 {
     core.add_account_password(AddPasswordAccountArgs {
+        ews: Default::default(),
         connection: MailConnectionSettings::new(
             ConnectionSecurity::Tls,
             ConnectionSecurity::Starttls,

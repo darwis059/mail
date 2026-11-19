@@ -399,7 +399,7 @@ async fn execute_one(
 ) -> Result<()> {
     match target {
         ActionTarget::Submission(config) if action.kind == "send" => {
-            send_action(ctx, config, action).await
+            send_action(ctx, config, action, None).await
         }
         ActionTarget::Submission(_) => Err(CoreError::Other(format!(
             "{} action was routed to the submission worker",
@@ -1067,15 +1067,20 @@ fn finish_sent_filing_in_db(
     Ok(())
 }
 
-async fn send_action(
+pub(crate) async fn send_action(
     ctx: &SyncCtx,
     config: &AccountConfig,
     action: &repo::actions::PendingAction,
+    ews: Option<&crate::ews::client::EwsClient>,
 ) -> Result<()> {
     let Some(draft_id) = action.payload["draftId"].as_i64() else {
         return Err(CoreError::Other("send action without draftId".into()));
     };
-    tracing::info!(account_id = config.id, draft_id, "smtp send: starting");
+    tracing::info!(
+        account_id = config.id,
+        draft_id,
+        "message submission: starting"
+    );
 
     let (detail, references) = ctx
         .db
@@ -1233,17 +1238,8 @@ async fn send_action(
         to = detail.to.len(),
         cc = detail.cc.len(),
         bcc = bcc.len(),
-        "smtp send: message built",
+        "message submission: message built",
     );
-
-    let auth = match config.auth_kind {
-        AuthKind::Password => smtp::SmtpAuth::Password(
-            credentials::load_async(ctx.credentials.clone(), config.id, Slot::Password).await?,
-        ),
-        AuthKind::Oauth2 => {
-            smtp::SmtpAuth::XOAuth2(ctx.tokens.access_token(config.id, config.provider).await?)
-        }
-    };
 
     let recipients: Vec<String> = detail
         .to
@@ -1258,27 +1254,39 @@ async fn send_action(
 
     tracing::info!(
         account_id = config.id,
-        host = %config.smtp_host,
-        port = config.smtp_port,
+        protocol = config.mail_protocol.as_str(),
         recipients = recipients.len(),
-        "smtp send: dispatching",
+        "message submission: dispatching",
     );
-    let submitted = match smtp::send_raw(config, &auth, &from.email, &recipients, &raw).await {
-        Err(CoreError::Auth(_)) if config.auth_kind == AuthKind::Oauth2 => {
-            // AUTH rejection happens before MAIL FROM/DATA, so it is safe to
-            // invalidate an unexpectedly stale provider token and retry the
-            // connection once without risking a duplicate delivery.
-            tracing::info!(
-                account_id = config.id,
-                provider = ?config.provider,
-                "SMTP rejected cached OAuth token; refreshing once"
-            );
-            ctx.tokens.invalidate(config.id).await;
-            let retry_auth =
-                smtp::SmtpAuth::XOAuth2(ctx.tokens.access_token(config.id, config.provider).await?);
-            smtp::send_raw(config, &retry_auth, &from.email, &recipients, &raw).await
+    let submitted = if let Some(ews) = ews {
+        crate::ews::sync::submit(ctx, action, ews, &recipients, &raw).await
+    } else {
+        let auth = match config.auth_kind {
+            AuthKind::Password => smtp::SmtpAuth::Password(
+                credentials::load_async(ctx.credentials.clone(), config.id, Slot::Password).await?,
+            ),
+            AuthKind::Oauth2 => {
+                smtp::SmtpAuth::XOAuth2(ctx.tokens.access_token(config.id, config.provider).await?)
+            }
+        };
+        match smtp::send_raw(config, &auth, &from.email, &recipients, &raw).await {
+            Err(CoreError::Auth(_)) if config.auth_kind == AuthKind::Oauth2 => {
+                // AUTH rejection happens before MAIL FROM/DATA, so it is safe to
+                // invalidate an unexpectedly stale provider token and retry the
+                // connection once without risking a duplicate delivery.
+                tracing::info!(
+                    account_id = config.id,
+                    provider = ?config.provider,
+                    "SMTP rejected cached OAuth token; refreshing once"
+                );
+                ctx.tokens.invalidate(config.id).await;
+                let retry_auth = smtp::SmtpAuth::XOAuth2(
+                    ctx.tokens.access_token(config.id, config.provider).await?,
+                );
+                smtp::send_raw(config, &retry_auth, &from.email, &recipients, &raw).await
+            }
+            result => result,
         }
-        result => result,
     };
     // Plain SMTP cannot list permitted From addresses, so the submission
     // outcome is the evidence shown next to the identity in settings.
@@ -1320,7 +1328,10 @@ async fn send_action(
     if let Some((_, error)) = error {
         return Err(error);
     }
-    tracing::info!(account_id = config.id, "smtp send: accepted by server");
+    tracing::info!(
+        account_id = config.id,
+        "message submission: accepted by server"
+    );
 
     let sent_folder_id = ctx
         .db
@@ -1351,7 +1362,7 @@ async fn send_action(
                 // Mail kept on this device is never sent.
                 MailProtocol::Local => false,
                 // These submit through their own APIs, which file sent mail.
-                MailProtocol::Gmail | MailProtocol::Jmap => false,
+                MailProtocol::Ews | MailProtocol::Gmail | MailProtocol::Jmap => false,
             };
 
             tx.execute(
@@ -1372,6 +1383,28 @@ async fn send_action(
                 "DELETE FROM drafts_meta WHERE message_id = ?1",
                 rusqlite::params![draft_id],
             )?;
+            if current.mail_protocol == MailProtocol::Ews {
+                use rusqlite::OptionalExtension;
+                let draft_remote: Option<String> = tx
+                    .query_row(
+                        "SELECT remote_id FROM ews_items WHERE message_id=?1",
+                        [draft_id],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                if let Some(remote) = draft_remote {
+                    repo::actions::enqueue(
+                        &tx,
+                        account_id,
+                        "delete_draft",
+                        None,
+                        None,
+                        &serde_json::json!({"ewsItemId":remote}),
+                        None,
+                    )?;
+                    tx.execute("DELETE FROM ews_items WHERE message_id=?1", [draft_id])?;
+                }
+            }
             let staged_paths = repo::messages::take_draft_attachment_paths(&tx, draft_id)?;
             let tid: Option<i64> =
                 repo::messages::get_row(&tx, draft_id)?.and_then(|r| r.thread_id);
@@ -1416,7 +1449,7 @@ async fn send_action(
         account_id = config.id,
         draft_id,
         thread_id = ?thread_id,
-        "smtp send: complete",
+        "message submission: complete",
     );
     Ok(())
 }

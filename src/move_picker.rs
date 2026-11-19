@@ -404,7 +404,7 @@ pub(super) fn register(
             let jmap = |account_id: i64| {
                 state.connected_accounts.iter().any(|account| {
                     account.id == account_id
-                        && account.mail_protocol == flectar_mail_core::models::MailProtocol::Jmap
+                        && matches!(account.mail_protocol, flectar_mail_core::models::MailProtocol::Jmap | flectar_mail_core::models::MailProtocol::Ews)
                 })
             };
             let targets = move_targets(&state.mailboxes, &account_ids, state.scope, mode, &jmap);

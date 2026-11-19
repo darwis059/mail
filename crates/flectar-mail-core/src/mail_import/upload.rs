@@ -118,7 +118,7 @@ impl crate::Core {
                 uploader: sync::gmail::Uploader::new(self.sync_ctx(), config.clone())?,
                 insert: false,
             },
-            MailProtocol::Pop3 | MailProtocol::Local => {
+            MailProtocol::Ews | MailProtocol::Pop3 | MailProtocol::Local => {
                 return Err(CoreError::Other(
                     "mail kept on this device is not uploaded".into(),
                 ));
@@ -267,6 +267,18 @@ impl crate::Core {
                 Ok((folder, label, protocol))
             })
             .await?;
+        if protocol == MailProtocol::Ews {
+            let handle = self
+                .handles
+                .read()
+                .await
+                .get(&folder.account_id)
+                .cloned()
+                .ok_or(CoreError::Offline)?;
+            handle.ews_append(folder_id, raw, seen, flagged).await?;
+            handle.send(crate::sync::engine::SyncCmd::SyncNow { complete: None });
+            return Ok(Uploaded::Copied);
+        }
         let (config, remote) = match uploads.remotes.entry(folder.account_id) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {
@@ -282,7 +294,7 @@ impl crate::Core {
                         uploader: sync::gmail::Uploader::new(self.sync_ctx(), config.clone())?,
                         insert: true,
                     },
-                    MailProtocol::Pop3 | MailProtocol::Local => {
+                    MailProtocol::Ews | MailProtocol::Pop3 | MailProtocol::Local => {
                         return Err(CoreError::Other(
                             "mail kept on this device is not uploaded".into(),
                         ));

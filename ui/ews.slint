@@ -1,0 +1,27 @@
+import { VerticalBox, HorizontalBox, ComboBox } from "std-widgets.slint";
+import { FormField } from "components/settings-components.slint";
+import { TypeScale } from "typography.slint";
+
+export global EwsSetup {
+    in-out property <string> url;
+    in-out property <string> domain: "pusat";
+    in-out property <int> auth: 0;
+    in-out property <string> poll: "30";
+    public function reset() { root.url = ""; root.domain = "pusat"; root.auth = 0; root.poll = "30"; }
+}
+
+export component EwsFields inherits VerticalBox {
+    in property <bool> enabled: true;
+    in property <color> label-color;
+    padding: 0px;
+    spacing: 8px;
+    vertical-stretch: 0;
+    FormField { enabled: root.enabled; label-color: root.label-color; label: @tr("EWS URL"); value <=> EwsSetup.url; placeholder: "https://mail.example.com/EWS/Exchange.asmx"; }
+    HorizontalBox {
+        padding: 0px;
+        FormField { enabled: root.enabled; label-color: root.label-color; label: @tr("Default domain (optional)"); value <=> EwsSetup.domain; placeholder: "pusat"; }
+        FormField { enabled: root.enabled; label-color: root.label-color; label: @tr("Check mail every (seconds)"); value <=> EwsSetup.poll; placeholder: "30"; }
+    }
+    Text { text: @tr("Authentication"); color: root.label-color; font-size: TypeScale.caption; }
+    ComboBox { enabled: root.enabled; model: ["Auto", "NTLM", "Basic"]; current-index <=> EwsSetup.auth; }
+}

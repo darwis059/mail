@@ -1356,6 +1356,7 @@ async fn smtp_sent_policy(provider: Provider, policy: SentCopyPolicy, expected_a
         .unwrap();
     let account = core
         .add_account_password(AddPasswordAccountArgs {
+            ews: Default::default(),
             email: "sender@example.com".into(),
             display_name: Some("Sender".into()),
             username: "sender@example.com".into(),
@@ -1634,6 +1635,7 @@ async fn smtp_failure_prevents_saving_account() {
     });
     let error = core
         .add_account_password(AddPasswordAccountArgs {
+            ews: Default::default(),
             email: "user@example.com".into(),
             display_name: None,
             username: "bridge-user".into(),
@@ -1747,6 +1749,7 @@ async fn account_setup_tries_the_part_before_the_at_as_username() {
     .await
     .unwrap();
     core.add_account_password(AddPasswordAccountArgs {
+        ews: Default::default(),
         email: "jane@example.com".into(),
         display_name: None,
         // Left empty, so the sign-in starts with the address.
@@ -1827,6 +1830,7 @@ async fn imap_mailbox_failure_prevents_saving_account() {
     .unwrap();
     let error = core
         .add_account_password(AddPasswordAccountArgs {
+            ews: Default::default(),
             email: "user@example.com".into(),
             display_name: None,
             username: "bridge-user".into(),
@@ -1914,6 +1918,7 @@ async fn another_gmail_spelling_does_not_edit_a_password_account() {
     // and reset the account's mail, so the form names the existing account.
     let error = core
         .add_account_password(AddPasswordAccountArgs {
+            ews: Default::default(),
             email: "John.Doe@gmail.com".into(),
             display_name: None,
             username: "john.doe@gmail.com".into(),

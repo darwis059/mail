@@ -53,6 +53,8 @@ pub enum MailProtocol {
     Imap,
     /// RFC 8620/8621 JMAP Mail and EmailSubmission.
     Jmap,
+    /// Direct Exchange Web Services.
+    Ews,
     /// POP3 download into folders that exist only on this device, with SMTP
     /// submission.
     Pop3,
@@ -68,6 +70,7 @@ impl MailProtocol {
             Self::Gmail => "gmail",
             Self::Imap => "imap",
             Self::Jmap => "jmap",
+            Self::Ews => "ews",
             Self::Pop3 => "pop3",
             Self::Local => "local",
         }
@@ -78,6 +81,7 @@ impl MailProtocol {
             "gmail" => Some(Self::Gmail),
             "imap" => Some(Self::Imap),
             "jmap" => Some(Self::Jmap),
+            "ews" => Some(Self::Ews),
             "pop3" => Some(Self::Pop3),
             "local" => Some(Self::Local),
             _ => None,
@@ -90,7 +94,7 @@ impl MailProtocol {
     pub const fn has_multi_mailbox_messages(self) -> bool {
         match self {
             Self::Gmail | Self::Jmap => true,
-            Self::Imap | Self::Pop3 | Self::Local => false,
+            Self::Ews | Self::Imap | Self::Pop3 | Self::Local => false,
         }
     }
 }
@@ -409,6 +413,8 @@ impl KeepOnServer {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountSettings {
+    #[serde(default)]
+    pub ews: Box<crate::ews::EwsSettings>,
     // Missing fields can occur in imported development-era configuration.
     // Apply the same bounded default as a newly created account so an absent
     // value never triggers an unbounded mailbox download.
@@ -453,6 +459,7 @@ impl AccountSettings {
     /// default: every account records the modes it was configured with.
     pub fn new(connection: MailConnectionSettings) -> Self {
         Self {
+            ews: Default::default(),
             mail_history: default_mail_history(),
             security: Default::default(),
             connection,
@@ -1752,6 +1759,8 @@ pub struct MessageSearchPage {
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddPasswordAccountArgs {
+    #[serde(default)]
+    pub ews: crate::ews::EwsSettings,
     pub email: String,
     pub display_name: Option<String>,
     pub username: String,

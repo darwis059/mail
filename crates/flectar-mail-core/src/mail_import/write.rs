@@ -226,6 +226,12 @@ impl crate::Core {
         };
         let protocol = self.account_protocol(account_id).await?;
         match protocol {
+            MailProtocol::Ews => {
+                return Err(CoreError::Other(
+                    "Import into Local Mail, then transfer messages to an existing Exchange folder"
+                        .into(),
+                ));
+            }
             MailProtocol::Pop3 | MailProtocol::Local => {}
             MailProtocol::Gmail | MailProtocol::Imap | MailProtocol::Jmap => {
                 return self

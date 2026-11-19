@@ -3222,6 +3222,7 @@ async fn body_actor(ctx: SyncCtx, config: AccountConfig, mut rx: mpsc::Receiver<
     let mut session = None;
     while let Some(command) = rx.recv().await {
         match command {
+            PriorityFetchCmd::EwsOriginal { .. } | PriorityFetchCmd::EwsAppend { .. } => {}
             PriorityFetchCmd::Body(message_id) => {
                 if let Err(error) = fetch_body(&ctx, &config, &mut session, message_id).await {
                     session = None;

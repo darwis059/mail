@@ -156,6 +156,7 @@ async fn account_against_dovecot() {
         .unwrap();
     let account = core
         .add_account_password(AddPasswordAccountArgs {
+            ews: Default::default(),
             email: "testuser@example.com".into(),
             display_name: Some("Test User".into()),
             username: "testuser".into(),
